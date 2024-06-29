@@ -1,48 +1,70 @@
-import type { MetaFunction } from "@remix-run/node";
+import { json } from "@remix-run/react";
+import { ActionFunctionArgs } from "@remix-run/node";
 
-export const meta: MetaFunction = () => {
-  return [
-    { title: "New Remix App" },
-    { name: "description", content: "Welcome to Remix!" },
-  ];
-};
+export async function action({ request }: ActionFunctionArgs) {
+  const requstId = Math.ceil(Math.random() * 10000)
+    .toString()
+    .padStart(5, "0");
 
-export default function Index() {
+  console.log(`[+] /?index(${requstId}): called`);
+
+  const data = await request.formData();
+  console.log(data);
+  const delay = data.get("delay");
+  const callerDelay = data.get("caller-delay");
+  const fireAndForgot = data.get("fire-and-forgot") === "on";
+
+  if (typeof delay !== "string" || typeof callerDelay !== "string") {
+    return json({ error: "invalid request" }, { status: 401 });
+  }
+
+  // ↓ 普通に SSRF を起こすので、やめよう
+  const requestTo = request.headers.get("origin") + "/job";
+
+  const promise = fetch(requestTo, {
+    method: "POST",
+    body: JSON.stringify({ delay }),
+  })
+    .then((response) => response.text())
+    .then((response) => console.log(`[+] /?index: response: ${response}`));
+  console.log(`[+] /?index(${requstId}): request sent to ${requestTo}`);
+  console.log(`[+] /?index(${requstId}): delay: ${callerDelay} msecs...`);
+  await new Promise((resolve) => setTimeout(resolve, parseInt(callerDelay)));
+  console.log(`[+] /?index(${requstId}): over`);
+  if (!fireAndForgot) {
+    console.log(`[+] /?index(${requstId}): waiting promise...`);
+    await promise;
+  }
+  console.log(`[+] /?index(${requstId}): return response`);
+  return json({ message: "ok" });
+}
+
+export default function App() {
   return (
-    <div className="font-sans p-4">
-      <h1 className="text-3xl">Welcome to Remix</h1>
-      <ul className="list-disc mt-4 pl-6 space-y-2">
-        <li>
-          <a
-            className="text-blue-700 underline visited:text-purple-900"
-            target="_blank"
-            href="https://remix.run/start/quickstart"
-            rel="noreferrer"
-          >
-            5m Quick Start
-          </a>
-        </li>
-        <li>
-          <a
-            className="text-blue-700 underline visited:text-purple-900"
-            target="_blank"
-            href="https://remix.run/start/tutorial"
-            rel="noreferrer"
-          >
-            30m Tutorial
-          </a>
-        </li>
-        <li>
-          <a
-            className="text-blue-700 underline visited:text-purple-900"
-            target="_blank"
-            href="https://remix.run/docs"
-            rel="noreferrer"
-          >
-            Remix Docs
-          </a>
-        </li>
-      </ul>
-    </div>
+    <form method="post" action="?index">
+      <div>
+        <label htmlFor="delay">Delay:</label>
+        <input
+          type="number"
+          name="delay"
+          placeholder="delay"
+          defaultValue="2000"
+        />
+      </div>
+      <div>
+        <label htmlFor="delay">Caller Delay:</label>
+        <input
+          type="number"
+          name="caller-delay"
+          placeholder="caller-delay"
+          defaultValue="1000"
+        />
+      </div>
+      <div>
+        <label htmlFor="fire-and-forgot">Fire and Forget:</label>
+        <input type="checkbox" name="fire-and-forgot" />
+      </div>
+      <button type="submit">submit</button>
+    </form>
   );
 }
